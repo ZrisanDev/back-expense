@@ -4,6 +4,8 @@ import {
   ManyToOne,
   JoinColumn,
   Entity,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Category } from '../../categories/entities/category.entity';
@@ -59,4 +61,10 @@ export class Expense {
 
   @Column({ name: 'is_duplicate_suspect', default: false })
   isDuplicateSuspect: boolean;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 }

@@ -1,26 +1,152 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { QueryExpenseDto } from './dto/query-expense.dto';
+import { Expense, ExpenseStatus } from './entities/expense.entity';
 
 @Injectable()
 export class ExpensesService {
-  create(createExpenseDto: CreateExpenseDto) {
-    return 'This action adds a new expense';
+  constructor(
+    @InjectRepository(Expense)
+    private readonly expenseRepository: Repository<Expense>,
+  ) {}
+
+  async create(userId: string, createExpenseDto: CreateExpenseDto) {
+    const duplicate = await this.findDuplicate(userId, createExpenseDto);
+
+    const expense = this.expenseRepository.create({
+      ...createExpenseDto,
+      userId,
+      isDuplicateSuspect: !!duplicate,
+    });
+
+    const saved = await this.expenseRepository.save(expense);
+
+    return {
+      ...saved,
+      duplicateWarning: duplicate ? `Possible duplicate of expense ${duplicate.id}` : null,
+    };
   }
 
-  findAll() {
-    return `This action returns all expenses`;
+  async findAll(userId: string, query: QueryExpenseDto) {
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      category,
+      dateFrom,
+      dateTo,
+      vendor,
+      sortBy = 'createdAt',
+      sortOrder = 'DESC',
+    } = query;
+
+    const qb = this.expenseRepository
+      .createQueryBuilder('expense')
+      .leftJoinAndSelect('expense.category', 'category')
+      .where('expense.userId = :userId', { userId });
+
+    if (status) {
+      qb.andWhere('expense.status = :status', { status });
+    }
+
+    if (category) {
+      qb.andWhere('expense.categoryId = :categoryId', { categoryId: category });
+    }
+
+    if (dateFrom) {
+      qb.andWhere('expense.date >= :dateFrom', { dateFrom });
+    }
+
+    if (dateTo) {
+      qb.andWhere('expense.date <= :dateTo', { dateTo });
+    }
+
+    if (vendor) {
+      qb.andWhere('expense.vendor ILIKE :vendor', { vendor: `%${vendor}%` });
+    }
+
+    qb.orderBy(`expense.${sortBy}`, sortOrder)
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} expense`;
+  async findOne(id: string, userId: string) {
+    const expense = await this.expenseRepository.findOne({
+      where: { id, userId },
+      relations: ['category'],
+    });
+
+    if (!expense) {
+      throw new NotFoundException('Expense not found');
+    }
+
+    return expense;
   }
 
-  update(id: number, updateExpenseDto: UpdateExpenseDto) {
-    return `This action updates a #${id} expense`;
+  async update(id: string, userId: string, updateExpenseDto: UpdateExpenseDto) {
+    const expense = await this.findOne(id, userId);
+
+    if (
+      expense.status !== ExpenseStatus.NEEDS_REVIEW &&
+      expense.status !== ExpenseStatus.PROCESSED
+    ) {
+      throw new BadRequestException(
+        `Cannot edit expense with status ${expense.status}. Only NEEDS_REVIEW or PROCESSED can be edited.`,
+      );
+    }
+
+    Object.assign(expense, updateExpenseDto);
+    return this.expenseRepository.save(expense);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} expense`;
+  async approve(id: string, userId: string) {
+    const expense = await this.findOne(id, userId);
+
+    if (expense.status !== ExpenseStatus.NEEDS_REVIEW) {
+      throw new BadRequestException(
+        `Cannot approve expense with status ${expense.status}. Only NEEDS_REVIEW can be approved.`,
+      );
+    }
+
+    expense.status = ExpenseStatus.APPROVED;
+    return this.expenseRepository.save(expense);
+  }
+
+  async remove(id: string, userId: string) {
+    const expense = await this.findOne(id, userId);
+    await this.expenseRepository.remove(expense);
+    return { deleted: true };
+  }
+
+  private async findDuplicate(
+    userId: string,
+    dto: CreateExpenseDto,
+  ): Promise<Expense | null> {
+    return this.expenseRepository.findOne({
+      where: {
+        userId,
+        amount: dto.amount,
+        date: dto.date,
+        vendor: dto.vendor,
+      },
+    });
   }
 }
