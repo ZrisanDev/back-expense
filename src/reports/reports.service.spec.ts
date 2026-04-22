@@ -440,4 +440,85 @@ describe('ReportsService', () => {
       }
     });
   });
+
+  // ─── exportCsv ──────────────────────────────────────────────
+
+  describe('exportCsv', () => {
+    it('should return CSV with headers when no expenses exist', async () => {
+      mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
+
+      const result = await service.exportCsv(userId, {});
+
+      expect(result).toContain('Date,Category,Vendor,Amount,Currency,Status');
+    });
+
+    it('should return CSV rows for expenses', async () => {
+      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
+        {
+          id: 'exp-1',
+          amount: '50.5',
+          currency: 'USD',
+          category: 'Food',
+          vendor: 'Amazon',
+          date: '2026-04-15',
+          status: 'APPROVED',
+        },
+        {
+          id: 'exp-2',
+          amount: '25',
+          currency: 'USD',
+          category: 'Transport',
+          vendor: 'Uber',
+          date: '2026-04-16',
+          status: 'APPROVED',
+        },
+      ]);
+
+      const result = await service.exportCsv(userId, { month: 4, year: 2026 });
+
+      const lines = result.split('\n');
+      expect(lines).toHaveLength(3); // 1 header + 2 data rows
+      expect(lines[0]).toBe('Date,Category,Vendor,Amount,Currency,Status');
+      expect(lines[1]).toContain('Food');
+      expect(lines[1]).toContain('50.50');
+      expect(lines[2]).toContain('Transport');
+    });
+
+    it('should handle null vendor in CSV output', async () => {
+      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
+        {
+          id: 'exp-1',
+          amount: '10',
+          currency: 'USD',
+          category: 'Food',
+          vendor: null,
+          date: '2026-04-15',
+          status: 'APPROVED',
+        },
+      ]);
+
+      const result = await service.exportCsv(userId, {});
+
+      expect(result).toContain('Food');
+      expect(result).toContain('10.00');
+    });
+
+    it('should escape CSV values with commas', async () => {
+      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
+        {
+          id: 'exp-1',
+          amount: '10',
+          currency: 'USD',
+          category: 'Food, Drinks',
+          vendor: 'Store',
+          date: '2026-04-15',
+          status: 'APPROVED',
+        },
+      ]);
+
+      const result = await service.exportCsv(userId, {});
+
+      expect(result).toContain('"Food, Drinks"');
+    });
+  });
 });

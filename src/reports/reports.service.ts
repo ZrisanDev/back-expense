@@ -291,4 +291,51 @@ export class ReportsService {
 
     return parseFloat(result?.total) || 0;
   }
+
+  /**
+   * Export expenses for a given month/year as CSV string.
+   */
+  async exportCsv(userId: string, query: SummaryQueryDto): Promise<string> {
+    const month = query.month ?? new Date().getMonth() + 1;
+    const year = query.year ?? new Date().getFullYear();
+
+    const expenses = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .leftJoin('expense.category', 'category')
+      .select('expense.id', 'id')
+      .addSelect('expense.amount', 'amount')
+      .addSelect('expense.currency', 'currency')
+      .addSelect("COALESCE(category.name, 'Uncategorized')", 'category')
+      .addSelect('expense.vendor', 'vendor')
+      .addSelect('expense.date', 'date')
+      .addSelect('expense.status', 'status')
+      .where('expense.userId = :userId', { userId })
+      .andWhere('EXTRACT(MONTH FROM expense.date) = :month', { month })
+      .andWhere('EXTRACT(YEAR FROM expense.date) = :year', { year })
+      .orderBy('expense.date', 'ASC')
+      .getRawMany();
+
+    const headers = ['Date', 'Category', 'Vendor', 'Amount', 'Currency', 'Status'];
+
+    const rows = expenses.map((e) => [
+      e.date,
+      e.category,
+      e.vendor ?? '',
+      parseFloat(e.amount).toFixed(2),
+      e.currency,
+      e.status,
+    ]);
+
+    const escape = (val: string) => {
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    return [
+      headers.join(','),
+      ...rows.map((row) => row.map(escape).join(',')),
+    ].join('\n');
+  }
 }

@@ -1,14 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CategoriesService } from './categories.service';
 import { Category } from './entities/category.entity';
 import { User } from '../users/entities/user.entity';
+import { Expense } from '../expenses/entities/expense.entity';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
   let repo: jest.Mocked<Repository<Category>>;
+  let expenseRepo: jest.Mocked<Repository<Expense>>;
 
   const userId = 'user-123';
   const categoryId = 'cat-456';
@@ -44,6 +46,12 @@ describe('CategoriesService', () => {
     getManyAndCount: jest.fn(),
   };
 
+  const mockExpenseQueryBuilder: any = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getCount: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -58,14 +66,22 @@ describe('CategoriesService', () => {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
         },
+        {
+          provide: getRepositoryToken(Expense),
+          useValue: {
+            createQueryBuilder: jest.fn(() => mockExpenseQueryBuilder),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<CategoriesService>(CategoriesService);
     repo = module.get(getRepositoryToken(Category));
+    expenseRepo = module.get(getRepositoryToken(Expense));
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
   });
 
@@ -261,6 +277,7 @@ describe('CategoriesService', () => {
   describe('remove', () => {
     it('should remove a category and return { deleted: true }', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue(mockCategory);
+      mockExpenseQueryBuilder.getCount.mockResolvedValue(0);
       (repo.remove as jest.Mock).mockResolvedValue(mockCategory);
 
       const result = await service.remove(categoryId, userId);
@@ -278,6 +295,30 @@ describe('CategoriesService', () => {
       await expect(service.remove('nonexistent-id', userId)).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('should throw BadRequestException when category is in use by expenses', async () => {
+      const categoryInUse = { ...mockCategory, name: 'Groceries' };
+      jest.spyOn(service, 'findOne').mockResolvedValue(categoryInUse);
+      mockExpenseQueryBuilder.getCount.mockResolvedValue(3);
+
+      await expect(service.remove(categoryId, userId)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.remove(categoryId, userId)).rejects.toThrow(
+        /Cannot delete category .* it is used by 3 expense/,
+      );
+      expect(repo.remove).not.toHaveBeenCalled();
+    });
+
+    it('should allow deletion when category has zero expenses', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(mockCategory);
+      mockExpenseQueryBuilder.getCount.mockResolvedValue(0);
+      (repo.remove as jest.Mock).mockResolvedValue(mockCategory);
+
+      await service.remove(categoryId, userId);
+
+      expect(repo.remove).toHaveBeenCalledWith(mockCategory);
     });
   });
 });

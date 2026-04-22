@@ -1,16 +1,19 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { QueryCategoryDto } from './dto/query-category.dto';
 import { Category } from './entities/category.entity';
+import { Expense } from '../expenses/entities/expense.entity';
 
 @Injectable()
 export class CategoriesService {
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
+    @InjectRepository(Expense)
+    private readonly expenseRepository: Repository<Expense>,
   ) {}
 
   async create(userId: string, createCategoryDto: CreateCategoryDto) {
@@ -97,6 +100,19 @@ export class CategoriesService {
 
   async remove(id: string, userId: string) {
     const category = await this.findOne(id, userId);
+
+    // Check if any expenses reference this category
+    const expenseCount = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .where('expense.categoryId = :categoryId', { categoryId: id })
+      .getCount();
+
+    if (expenseCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete category "${category.name}" — it is used by ${expenseCount} expense(s). Reassign or remove them first.`,
+      );
+    }
+
     await this.categoryRepository.remove(category);
     return { deleted: true };
   }
