@@ -31,7 +31,9 @@ export class ExpensesService {
 
     return {
       ...saved,
-      duplicateWarning: duplicate ? `Possible duplicate of expense ${duplicate.id}` : null,
+      duplicateWarning: duplicate
+        ? `Possible duplicate of expense ${duplicate.id}`
+        : null,
     };
   }
 
