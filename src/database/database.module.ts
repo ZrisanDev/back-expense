@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Category } from 'src/categories/entities/category.entity';
 import { Expense } from 'src/expenses/entities/expense.entity';
 import { User } from 'src/users/entities/user.entity';
+import { Budget } from 'src/budgets/entities/budget.entity';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { User } from 'src/users/entities/user.entity';
         username: configService.get<string>('database.username'),
         password: configService.get<string>('database.password'),
         database: configService.get<string>('database.database'),
-        entities: [User, Expense, Category],
+        entities: [User, Expense, Category, Budget],
         synchronize: configService.get<boolean>('database.synchronize'),
         extra: {
           max: 10,
