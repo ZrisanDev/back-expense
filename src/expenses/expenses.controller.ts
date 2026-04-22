@@ -9,19 +9,25 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../common/decorators/get-user.decorator';
+import { Expense } from './entities/expense.entity';
 
+@ApiTags('Expenses')
+@ApiBearerAuth('JWT-auth')
 @Controller('expenses')
 @UseGuards(JwtAuthGuard)
 export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Create expense' })
+  @ApiResponse({ status: 201, description: 'Expense created', type: Expense })
   create(
     @GetUser('id') userId: string,
     @Body() createExpenseDto: CreateExpenseDto,
@@ -30,16 +36,24 @@ export class ExpensesController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'List expenses' })
+  @ApiResponse({ status: 200, description: 'Expenses list' })
   findAll(@GetUser('id') userId: string, @Query() query: QueryExpenseDto) {
     return this.expensesService.findAll(userId, query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get expense by ID' })
+  @ApiResponse({ status: 200, description: 'Expense found', type: Expense })
+  @ApiResponse({ status: 404, description: 'Expense not found' })
   findOne(@GetUser('id') userId: string, @Param('id') id: string) {
     return this.expensesService.findOne(id, userId);
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Update expense' })
+  @ApiResponse({ status: 200, description: 'Expense updated', type: Expense })
+  @ApiResponse({ status: 404, description: 'Expense not found' })
   update(
     @GetUser('id') userId: string,
     @Param('id') id: string,
@@ -49,11 +63,17 @@ export class ExpensesController {
   }
 
   @Patch(':id/approve')
+  @ApiOperation({ summary: 'Approve expense' })
+  @ApiResponse({ status: 200, description: 'Expense approved', type: Expense })
+  @ApiResponse({ status: 404, description: 'Expense not found' })
   approve(@GetUser('id') userId: string, @Param('id') id: string) {
     return this.expensesService.approve(id, userId);
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Delete expense' })
+  @ApiResponse({ status: 200, description: 'Expense deleted' })
+  @ApiResponse({ status: 404, description: 'Expense not found' })
   remove(@GetUser('id') userId: string, @Param('id') id: string) {
     return this.expensesService.remove(id, userId);
   }
