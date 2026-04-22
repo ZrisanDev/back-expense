@@ -1,18 +1,22 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { FilesService } from './files.service';
 import { File, FileType } from './entities/file.entity';
-import { Expense } from '../expenses/entities/expense.entity';
+import { Expense, ExpenseStatus } from '../expenses/entities/expense.entity';
 import { S3ClientService } from '../aws/s3-client.service';
 import { UploadUrlRequestDto } from './dto/upload-url.request.dto';
+import { ExpenseStatusHistory } from '../processing/entities/expense-status-history.entity';
 
 describe('FilesService', () => {
   let service: FilesService;
   let fileRepo: jest.Mocked<Repository<File>>;
   let expenseRepo: jest.Mocked<Repository<Expense>>;
+  let statusHistoryRepo: jest.Mocked<Repository<ExpenseStatusHistory>>;
   let s3ClientService: jest.Mocked<S3ClientService>;
+  let configService: jest.Mocked<ConfigService>;
 
   const userId = 'user-123';
   const expenseId = 'exp-456';
@@ -60,6 +64,7 @@ describe('FilesService', () => {
           provide: getRepositoryToken(Expense),
           useValue: {
             findOne: jest.fn(),
+            save: jest.fn(),
           },
         },
         {
@@ -70,13 +75,31 @@ describe('FilesService', () => {
             deleteObject: jest.fn(),
           },
         },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string) => {
+              if (key === 'PROCESSING_SERVICE_URL') return 'http://localhost:8000';
+              if (key === 'INTERNAL_API_KEY') return 'dev-key';
+              return undefined;
+            }),
+          },
+        },
+        {
+          provide: getRepositoryToken(ExpenseStatusHistory),
+          useValue: {
+            save: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<FilesService>(FilesService);
     fileRepo = module.get(getRepositoryToken(File));
     expenseRepo = module.get(getRepositoryToken(Expense));
+    statusHistoryRepo = module.get(getRepositoryToken(ExpenseStatusHistory));
     s3ClientService = module.get(S3ClientService);
+    configService = module.get(ConfigService);
   });
 
   afterEach(() => {
@@ -383,6 +406,141 @@ describe('FilesService', () => {
       await service.deleteFilesForExpense(expenseId);
 
       expect(s3ClientService.deleteObject).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmUpload', () => {
+    it('should find file by ID, verify expense ownership, and return the file', async () => {
+      const expense = {
+        ...mockExpense,
+        status: ExpenseStatus.PROCESSING,
+      };
+      (expenseRepo.findOne as jest.Mock).mockResolvedValue(expense);
+      (fileRepo.findOne as jest.Mock).mockResolvedValue(mockFile);
+
+      const result = await service.confirmUpload(userId, expenseId, fileId);
+
+      expect(expenseRepo.findOne).toHaveBeenCalledWith({
+        where: { id: expenseId, userId },
+      });
+      expect(fileRepo.findOne).toHaveBeenCalledWith({
+        where: { id: fileId, expenseId },
+      });
+      expect(result).toEqual(mockFile);
+    });
+
+    it('should throw NotFoundException when expense not found', async () => {
+      (expenseRepo.findOne as jest.Mock).mockResolvedValue(null);
+
+      const promise = service.confirmUpload(userId, expenseId, fileId);
+      await expect(promise).rejects.toThrow(NotFoundException);
+      await expect(promise).rejects.toThrow('Expense not found');
+    });
+
+    it('should throw NotFoundException when file not found', async () => {
+      (expenseRepo.findOne as jest.Mock).mockResolvedValue(mockExpense);
+      (fileRepo.findOne as jest.Mock).mockResolvedValue(null);
+
+      const promise = service.confirmUpload(userId, expenseId, fileId);
+      await expect(promise).rejects.toThrow(NotFoundException);
+      await expect(promise).rejects.toThrow('File not found');
+    });
+
+    it('should transition expense from UPLOADED to PROCESSING and create status history', async () => {
+      const expense = {
+        ...mockExpense,
+        status: ExpenseStatus.UPLOADED,
+      };
+      (expenseRepo.findOne as jest.Mock).mockResolvedValue(expense);
+      (fileRepo.findOne as jest.Mock).mockResolvedValue(mockFile);
+      (expenseRepo.save as jest.Mock).mockResolvedValue({
+        ...expense,
+        status: ExpenseStatus.PROCESSING,
+      });
+      (statusHistoryRepo.save as jest.Mock).mockResolvedValue({
+        id: 'sh-1',
+        expenseId,
+        fromStatus: ExpenseStatus.UPLOADED,
+        toStatus: ExpenseStatus.PROCESSING,
+      });
+
+      await service.confirmUpload(userId, expenseId, fileId);
+
+      expect(expenseRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: ExpenseStatus.PROCESSING }),
+      );
+      expect(statusHistoryRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expenseId,
+          fromStatus: ExpenseStatus.UPLOADED,
+          toStatus: ExpenseStatus.PROCESSING,
+          reason: 'File uploaded',
+        }),
+      );
+    });
+
+    it('should skip status transition when expense is already in PROCESSING (idempotent)', async () => {
+      const expense = {
+        ...mockExpense,
+        status: ExpenseStatus.PROCESSING,
+      };
+      (expenseRepo.findOne as jest.Mock).mockResolvedValue(expense);
+      (fileRepo.findOne as jest.Mock).mockResolvedValue(mockFile);
+
+      await service.confirmUpload(userId, expenseId, fileId);
+
+      expect(expenseRepo.save).not.toHaveBeenCalled();
+      expect(statusHistoryRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('triggerProcessing', () => {
+    let originalFetch: typeof global.fetch;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('should POST to PROCESSING_SERVICE_URL/process with expenseId and s3Key', async () => {
+      const mockResponse = { ok: true, status: 202 };
+      global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+      await service.triggerProcessing(expenseId, mockFile.s3Key);
+
+      expect(configService.get).toHaveBeenCalledWith('PROCESSING_SERVICE_URL');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8000/process',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'X-API-Key': 'dev-key',
+          }),
+          body: JSON.stringify({ expenseId, s3Key: mockFile.s3Key }),
+        }),
+      );
+    });
+
+    it('should be fire-and-forget (catches errors, does not throw)', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+
+      // Should NOT throw — fire-and-forget
+      await expect(
+        service.triggerProcessing(expenseId, mockFile.s3Key),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should log error when HTTP call fails', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+
+      // Should not throw — fire-and-forget, error is logged internally
+      await expect(
+        service.triggerProcessing(expenseId, mockFile.s3Key),
+      ).resolves.toBeUndefined();
     });
   });
 });

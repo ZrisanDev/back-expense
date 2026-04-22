@@ -33,6 +33,7 @@ describe('validationSchema', () => {
         S3_ACCESS_KEY_ID: 'AKIAIOSFODNN7EXAMPLE',
         S3_SECRET_ACCESS_KEY: 'a-very-long-secret-key-min-16-chars',
         INTERNAL_API_KEY: 'a-very-long-internal-api-key',
+        PROCESSING_SERVICE_URL: 'https://processing.example.com',
       };
       const { error } = validationSchema.validate(prodEnv, {
         abortEarly: false,
@@ -170,6 +171,14 @@ describe('validationSchema', () => {
       });
       expect(error).toBeUndefined();
       expect(value.NODE_ENV).toBe('development');
+    });
+
+    it('should default PROCESSING_SERVICE_URL to "http://localhost:8000" when not set', () => {
+      const { error, value } = validationSchema.validate(validDevEnv, {
+        abortEarly: false,
+      });
+      expect(error).toBeUndefined();
+      expect(value.PROCESSING_SERVICE_URL).toBe('http://localhost:8000');
     });
   });
 

@@ -3,11 +3,13 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { File, FileType } from './entities/file.entity';
-import { Expense } from '../expenses/entities/expense.entity';
+import { Expense, ExpenseStatus } from '../expenses/entities/expense.entity';
+import { ExpenseStatusHistory } from '../processing/entities/expense-status-history.entity';
 import { S3ClientService } from '../aws/s3-client.service';
 import { UploadUrlRequestDto } from './dto/upload-url.request.dto';
 
@@ -31,7 +33,10 @@ export class FilesService {
     @InjectRepository(File) private readonly fileRepository: Repository<File>,
     @InjectRepository(Expense)
     private readonly expenseRepository: Repository<Expense>,
+    @InjectRepository(ExpenseStatusHistory)
+    private readonly statusHistoryRepository: Repository<ExpenseStatusHistory>,
     private readonly s3ClientService: S3ClientService,
+    private readonly configService: ConfigService,
   ) {}
 
   async generateUploadUrl(
@@ -133,6 +138,64 @@ export class FilesService {
         );
       }
     }
+  }
+
+  async confirmUpload(
+    userId: string,
+    expenseId: string,
+    fileId: string,
+  ): Promise<File> {
+    const expense = await this.findExpenseOrThrow(expenseId, userId);
+
+    const file = await this.fileRepository.findOne({
+      where: { id: fileId, expenseId },
+    });
+
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    // Auto-transition UPLOADED → PROCESSING (idempotent)
+    if (expense.status === ExpenseStatus.UPLOADED) {
+      expense.status = ExpenseStatus.PROCESSING;
+      await this.expenseRepository.save(expense);
+
+      const statusHistory = new ExpenseStatusHistory();
+      statusHistory.expenseId = expenseId;
+      statusHistory.fromStatus = ExpenseStatus.UPLOADED;
+      statusHistory.toStatus = ExpenseStatus.PROCESSING;
+      statusHistory.reason = 'File uploaded';
+      await this.statusHistoryRepository.save(statusHistory);
+    }
+
+    return file;
+  }
+
+  async triggerProcessing(expenseId: string, s3Key: string): Promise<void> {
+    const processingServiceUrl = this.configService.get<string>(
+      'PROCESSING_SERVICE_URL',
+    );
+    const apiKey = this.configService.get<string>('INTERNAL_API_KEY');
+
+    fetch(`${processingServiceUrl}/process`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify({ expenseId, s3Key }),
+    })
+      .then(() => {
+        this.logger.log(
+          `Processing triggered for expense ${expenseId} with key ${s3Key}`,
+        );
+      })
+      .catch((error: Error) => {
+        this.logger.error(
+          `Failed to trigger processing for expense ${expenseId}: ${error.message}`,
+          error.stack,
+        );
+      });
   }
 
   private async findExpenseOrThrow(

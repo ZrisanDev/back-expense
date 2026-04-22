@@ -28,6 +28,8 @@ describe('FilesController', () => {
       findByExpense: jest.fn(),
       generateDownloadUrl: jest.fn(),
       remove: jest.fn(),
+      confirmUpload: jest.fn(),
+      triggerProcessing: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -219,6 +221,50 @@ describe('FilesController', () => {
       await expect(
         controller.remove(userId, 'nonexistent-id', fileId),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('confirmUpload', () => {
+    it('should call service.confirmUpload and service.triggerProcessing', async () => {
+      service.confirmUpload.mockResolvedValue(mockFile as any);
+      service.triggerProcessing.mockResolvedValue(undefined);
+
+      const result = await controller.confirmUpload(userId, expenseId, fileId);
+
+      expect(service.confirmUpload).toHaveBeenCalledWith(
+        userId,
+        expenseId,
+        fileId,
+      );
+      expect(service.triggerProcessing).toHaveBeenCalledWith(
+        expenseId,
+        mockFile.s3Key,
+      );
+      expect(result).toEqual(mockFile);
+    });
+
+    it('should propagate NotFoundException when file not found', async () => {
+      service.confirmUpload.mockRejectedValue(
+        new NotFoundException('File not found'),
+      );
+
+      const promise = controller.confirmUpload(userId, expenseId, 'nonexistent-id');
+      await expect(promise).rejects.toThrow(NotFoundException);
+      await expect(promise).rejects.toThrow('File not found');
+
+      // triggerProcessing should NOT be called when confirmUpload fails
+      expect(service.triggerProcessing).not.toHaveBeenCalled();
+    });
+
+    it('should propagate NotFoundException when expense not found', async () => {
+      service.confirmUpload.mockRejectedValue(
+        new NotFoundException('Expense not found'),
+      );
+
+      const promise = controller.confirmUpload(userId, 'nonexistent-id', fileId);
+      await expect(promise).rejects.toThrow(NotFoundException);
+
+      expect(service.triggerProcessing).not.toHaveBeenCalled();
     });
   });
 });

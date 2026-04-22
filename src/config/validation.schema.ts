@@ -60,4 +60,12 @@ export const validationSchema = Joi.object({
   AI_API_KEY: Joi.string().optional(),
 
   CONFIDENCE_THRESHOLD: Joi.number().min(0).max(1).default(0.7),
+
+  PROCESSING_SERVICE_URL: Joi.string()
+    .uri()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().required(),
+      otherwise: Joi.string().default('http://localhost:8000'),
+    }),
 }).unknown(true);

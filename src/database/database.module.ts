@@ -8,6 +8,8 @@ import { User } from 'src/users/entities/user.entity';
 import { Budget } from 'src/budgets/entities/budget.entity';
 import { RefreshToken } from 'src/auth/entities/refresh-token.entity';
 import { File } from 'src/files/entities/file.entity';
+import { ProcessingResult } from 'src/processing/entities/processing-result.entity';
+import { ExpenseStatusHistory } from 'src/processing/entities/expense-status-history.entity';
 
 @Module({
   imports: [
@@ -21,7 +23,7 @@ import { File } from 'src/files/entities/file.entity';
         username: configService.get<string>('database.username'),
         password: configService.get<string>('database.password'),
         database: configService.get<string>('database.database'),
-        entities: [User, Expense, Category, Budget, RefreshToken, File],
+        entities: [User, Expense, Category, Budget, RefreshToken, File, ProcessingResult, ExpenseStatusHistory],
         synchronize: configService.get<boolean>('database.synchronize'),
         extra: {
           max: 10,

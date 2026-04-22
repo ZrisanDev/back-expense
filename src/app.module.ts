@@ -18,6 +18,7 @@ import configuration from './config/configuration';
 import databaseConfig from './config/database.config';
 import { validationSchema } from './config/validation.schema';
 import { AwsModule } from './aws/aws.module';
+import { ProcessingModule } from './processing/processing.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AwsModule } from './aws/aws.module';
     ReportsModule,
     AwsModule,
     FilesModule,
+    ProcessingModule,
   ],
   controllers: [AppController],
   providers: [

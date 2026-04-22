@@ -75,4 +75,22 @@ export class FilesController {
   ) {
     return this.filesService.remove(userId, expenseId, fileId);
   }
+
+  @Post(':fileId/confirm-upload')
+  @ApiOperation({ summary: 'Confirm file upload and trigger processing' })
+  @ApiResponse({ status: 200, description: 'Upload confirmed, processing triggered' })
+  @ApiResponse({ status: 404, description: 'Expense or file not found' })
+  async confirmUpload(
+    @GetUser('id') userId: string,
+    @Param('expenseId') expenseId: string,
+    @Param('fileId') fileId: string,
+  ) {
+    const file = await this.filesService.confirmUpload(
+      userId,
+      expenseId,
+      fileId,
+    );
+    this.filesService.triggerProcessing(expenseId, file.s3Key);
+    return file;
+  }
 }

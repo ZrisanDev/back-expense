@@ -11,6 +11,8 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { File } from '../../files/entities/file.entity';
+import { ProcessingResult } from '../../processing/entities/processing-result.entity';
+import { ExpenseStatusHistory } from '../../processing/entities/expense-status-history.entity';
 
 export enum ExpenseStatus {
   UPLOADED = 'UPLOADED',
@@ -72,4 +74,10 @@ export class Expense {
 
   @OneToMany(() => File, (file) => file.expense)
   files: File[];
+
+  @OneToMany(() => ProcessingResult, (pr) => pr.expense)
+  processingResults: ProcessingResult[];
+
+  @OneToMany(() => ExpenseStatusHistory, (h) => h.expense)
+  statusHistory: ExpenseStatusHistory[];
 }
