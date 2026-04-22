@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { BudgetsModule } from './budgets/budgets.module';
+import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 
 import configuration from './config/configuration';
@@ -25,6 +26,7 @@ import databaseConfig from './config/database.config';
     ExpensesModule,
     CategoriesModule,
     BudgetsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
