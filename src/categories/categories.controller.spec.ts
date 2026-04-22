@@ -10,8 +10,6 @@ describe('CategoriesController', () => {
   const userId = 'user-123';
   const categoryId = 'cat-456';
 
-  const mockRequest = { user: { id: userId } } as any;
-
   const mockCategory = {
     id: categoryId,
     name: 'Groceries',
@@ -53,7 +51,7 @@ describe('CategoriesController', () => {
       const dto = { name: 'Groceries', icon: '🛒' };
       service.create.mockResolvedValue(mockCategory as any);
 
-      const result = await controller.create(mockRequest, dto);
+      const result = await controller.create(userId, dto);
 
       expect(service.create).toHaveBeenCalledWith(userId, dto);
       expect(result).toEqual(mockCategory);
@@ -72,7 +70,7 @@ describe('CategoriesController', () => {
       };
       service.findAll.mockResolvedValue(paginatedResult as any);
 
-      const result = await controller.findAll(mockRequest, query);
+      const result = await controller.findAll(userId, query);
 
       expect(service.findAll).toHaveBeenCalledWith(userId, query);
       expect(result).toEqual(paginatedResult);
@@ -83,7 +81,7 @@ describe('CategoriesController', () => {
     it('should call service.findOne with id and userId', async () => {
       service.findOne.mockResolvedValue(mockCategory as any);
 
-      const result = await controller.findOne(mockRequest, categoryId);
+      const result = await controller.findOne(userId, categoryId);
 
       expect(service.findOne).toHaveBeenCalledWith(categoryId, userId);
       expect(result).toEqual(mockCategory);
@@ -95,7 +93,7 @@ describe('CategoriesController', () => {
       );
 
       await expect(
-        controller.findOne(mockRequest, 'nonexistent-id'),
+        controller.findOne(userId, 'nonexistent-id'),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -106,7 +104,7 @@ describe('CategoriesController', () => {
       const updated = { ...mockCategory, name: 'Meals' };
       service.update.mockResolvedValue(updated as any);
 
-      const result = await controller.update(mockRequest, categoryId, dto);
+      const result = await controller.update(userId, categoryId, dto);
 
       expect(service.update).toHaveBeenCalledWith(categoryId, userId, dto);
       expect(result).toEqual(updated);
@@ -118,16 +116,16 @@ describe('CategoriesController', () => {
       );
 
       await expect(
-        controller.update(mockRequest, 'nonexistent-id', { name: 'X' } as any),
+        controller.update(userId, 'nonexistent-id', { name: 'X' } as any),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('remove', () => {
     it('should call service.remove with id and userId', async () => {
-      service.remove.mockResolvedValue({ deleted: true });
+      service.remove.mockResolvedValue({ deleted: true } as any);
 
-      const result = await controller.remove(mockRequest, categoryId);
+      const result = await controller.remove(userId, categoryId);
 
       expect(service.remove).toHaveBeenCalledWith(categoryId, userId);
       expect(result).toEqual({ deleted: true });
@@ -139,7 +137,7 @@ describe('CategoriesController', () => {
       );
 
       await expect(
-        controller.remove(mockRequest, 'nonexistent-id'),
+        controller.remove(userId, 'nonexistent-id'),
       ).rejects.toThrow(NotFoundException);
     });
   });

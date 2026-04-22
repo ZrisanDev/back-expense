@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CategoriesService } from './categories.service';
 import { Category } from './entities/category.entity';
+import { User } from '../users/entities/user.entity';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
@@ -15,10 +16,10 @@ describe('CategoriesService', () => {
   const mockCategory: Category = {
     id: categoryId,
     name: 'Groceries',
-    icon: undefined,
+    icon: '🛒',
     isDefault: false,
     userId,
-    user: undefined,
+    user: {} as User,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -28,8 +29,8 @@ describe('CategoriesService', () => {
     name: 'Food',
     icon: '🍔',
     isDefault: true,
-    userId: null,
-    user: null as any,
+    userId: 'system',
+    user: {} as User,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -75,11 +76,15 @@ describe('CategoriesService', () => {
   describe('create', () => {
     it('should create and save a category with userId', async () => {
       const dto = { name: 'Groceries', icon: '🛒', isDefault: false };
+      (repo.findOne as jest.Mock).mockResolvedValue(null);
       (repo.create as jest.Mock).mockReturnValue({ ...dto, userId });
       (repo.save as jest.Mock).mockResolvedValue(mockCategory);
 
       const result = await service.create(userId, dto);
 
+      expect(repo.findOne).toHaveBeenCalledWith({
+        where: { userId, name: 'Groceries', isDefault: false },
+      });
       expect(repo.create).toHaveBeenCalledWith({ ...dto, userId });
       expect(repo.save).toHaveBeenCalledWith({ ...dto, userId });
       expect(result).toEqual(mockCategory);
@@ -93,6 +98,7 @@ describe('CategoriesService', () => {
         icon: undefined,
         isDefault: undefined,
       };
+      (repo.findOne as jest.Mock).mockResolvedValue(null);
       (repo.create as jest.Mock).mockReturnValue({ ...dto, userId });
       (repo.save as jest.Mock).mockResolvedValue(expected);
 
@@ -100,6 +106,35 @@ describe('CategoriesService', () => {
 
       expect(repo.create).toHaveBeenCalledWith({ ...dto, userId });
       expect(result).toEqual(expected);
+    });
+
+    it('should throw ConflictException when duplicate category name exists', async () => {
+      const dto = { name: 'Groceries', icon: '🛒', isDefault: false };
+      (repo.findOne as jest.Mock).mockResolvedValue(mockCategory);
+
+      await expect(service.create(userId, dto)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.create(userId, dto)).rejects.toThrow(
+        'Category with this name already exists',
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('should skip duplicate check for default categories', async () => {
+      const dto = { name: 'Food', icon: '🍔', isDefault: true };
+      const systemUserId = 'system';
+      (repo.create as jest.Mock).mockReturnValue({
+        ...dto,
+        userId: systemUserId,
+      });
+      (repo.save as jest.Mock).mockResolvedValue(mockDefaultCategory);
+
+      const result = await service.create(systemUserId, dto);
+
+      expect(repo.findOne).not.toHaveBeenCalled();
+      expect(repo.create).toHaveBeenCalled();
+      expect(result).toEqual(mockDefaultCategory);
     });
   });
 
