@@ -113,7 +113,7 @@ describe('ExpensesController', () => {
       const updated = { ...mockExpense, amount: 75.0 };
       service.update.mockResolvedValue(updated as any);
 
-      const result = await controller.update(userId, expenseId, dto as any);
+      const result = await controller.update(userId, expenseId, dto);
 
       expect(service.update).toHaveBeenCalledWith(expenseId, userId, dto);
       expect(result).toEqual(updated);
@@ -134,7 +134,7 @@ describe('ExpensesController', () => {
 
   describe('remove', () => {
     it('should call service.remove with id and userId', async () => {
-      service.remove.mockResolvedValue({ deleted: true } as any);
+      service.remove.mockResolvedValue({ deleted: true });
 
       const result = await controller.remove(userId, expenseId);
 
@@ -147,9 +147,9 @@ describe('ExpensesController', () => {
         new NotFoundException('Expense not found'),
       );
 
-      await expect(
-        controller.remove(userId, 'nonexistent-id'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.remove(userId, 'nonexistent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

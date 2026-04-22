@@ -56,7 +56,7 @@ describe('BudgetsController', () => {
       const dto = { categoryId: 'cat-456', month: 4, year: 2026, limit: 500 };
       service.create.mockResolvedValue(mockBudget as any);
 
-      const result = await controller.create(userId, dto as any);
+      const result = await controller.create(userId, dto);
 
       expect(service.create).toHaveBeenCalledWith(userId, dto);
       expect(result).toEqual(mockBudget);
@@ -69,7 +69,7 @@ describe('BudgetsController', () => {
       const budgetsList = [mockBudget];
       service.findAll.mockResolvedValue(budgetsList as any);
 
-      const result = await controller.findAll(userId, query as any);
+      const result = await controller.findAll(userId, query);
 
       expect(service.findAll).toHaveBeenCalledWith(userId, query);
       expect(result).toEqual(budgetsList);
@@ -103,7 +103,7 @@ describe('BudgetsController', () => {
       const updated = { ...mockBudget, limit: 750 };
       service.update.mockResolvedValue(updated as any);
 
-      const result = await controller.update(userId, budgetId, dto as any);
+      const result = await controller.update(userId, budgetId, dto);
 
       expect(service.update).toHaveBeenCalledWith(budgetId, userId, dto);
       expect(result).toEqual(updated);
@@ -122,7 +122,7 @@ describe('BudgetsController', () => {
 
   describe('remove', () => {
     it('should call service.remove with id and userId', async () => {
-      service.remove.mockResolvedValue({ deleted: true } as any);
+      service.remove.mockResolvedValue({ deleted: true });
 
       const result = await controller.remove(userId, budgetId);
 
@@ -135,9 +135,9 @@ describe('BudgetsController', () => {
         new NotFoundException('Budget not found'),
       );
 
-      await expect(
-        controller.remove(userId, 'nonexistent-id'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.remove(userId, 'nonexistent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

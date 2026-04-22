@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
-import { CategoriesController } from './categories.controller';
-import { CategoriesService } from './categories.service';
+import { CategoriesController } from '../categories.controller';
+import { CategoriesService } from '../categories.service';
 
 describe('CategoriesController', () => {
   let controller: CategoriesController;
@@ -123,7 +123,7 @@ describe('CategoriesController', () => {
 
   describe('remove', () => {
     it('should call service.remove with id and userId', async () => {
-      service.remove.mockResolvedValue({ deleted: true } as any);
+      service.remove.mockResolvedValue({ deleted: true });
 
       const result = await controller.remove(userId, categoryId);
 
@@ -136,9 +136,9 @@ describe('CategoriesController', () => {
         new NotFoundException('Category not found'),
       );
 
-      await expect(
-        controller.remove(userId, 'nonexistent-id'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.remove(userId, 'nonexistent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

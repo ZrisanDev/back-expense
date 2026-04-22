@@ -1,9 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import {
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ExpensesService } from './expenses.service';
 import { Expense, ExpenseStatus } from './entities/expense.entity';
@@ -149,9 +146,12 @@ describe('ExpensesService', () => {
       const result = await service.findAll(userId, query);
 
       expect(repo.createQueryBuilder).toHaveBeenCalledWith('expense');
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith('expense.userId = :userId', {
-        userId,
-      });
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+        'expense.userId = :userId',
+        {
+          userId,
+        },
+      );
       expect(result).toEqual({
         items,
         total: 1,
@@ -228,7 +228,10 @@ describe('ExpensesService', () => {
     });
 
     it('should throw BadRequestException when expense status is not editable', async () => {
-      const approvedExpense = { ...mockExpense, status: ExpenseStatus.APPROVED };
+      const approvedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.APPROVED,
+      };
       jest
         .spyOn(service, 'findOne')
         .mockResolvedValue(approvedExpense as Expense);

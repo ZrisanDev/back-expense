@@ -23,12 +23,10 @@ export class ReportsController {
   @ApiOperation({ summary: 'Get monthly spending summary' })
   @ApiResponse({
     status: 200,
-    description: 'Monthly summary with totals, category breakdown, top vendors, and budget comparison',
+    description:
+      'Monthly summary with totals, category breakdown, top vendors, and budget comparison',
   })
-  getSummary(
-    @GetUser('id') userId: string,
-    @Query() query: SummaryQueryDto,
-  ) {
+  getSummary(@GetUser('id') userId: string, @Query() query: SummaryQueryDto) {
     return this.reportsService.getSummary(userId, query);
   }
 

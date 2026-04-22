@@ -41,7 +41,7 @@ export class ReportsService {
       .createQueryBuilder('expense')
       .leftJoin('expense.category', 'category')
       .select('expense.categoryId', 'categoryId')
-      .addSelect('COALESCE(category.name, \'Uncategorized\')', 'categoryName')
+      .addSelect("COALESCE(category.name, 'Uncategorized')", 'categoryName')
       .addSelect('category.icon', 'categoryIcon')
       .addSelect('COALESCE(SUM(expense.amount), 0)', 'total')
       .where('expense.userId = :userId', { userId })
@@ -122,10 +122,7 @@ export class ReportsService {
     };
   }
 
-  async getCategoryBreakdown(
-    userId: string,
-    query: CategoryBreakdownQueryDto,
-  ) {
+  async getCategoryBreakdown(userId: string, query: CategoryBreakdownQueryDto) {
     const month = query.month ?? new Date().getMonth() + 1;
     const year = query.year ?? new Date().getFullYear();
 
@@ -134,7 +131,7 @@ export class ReportsService {
       .createQueryBuilder('expense')
       .leftJoin('expense.category', 'category')
       .select('expense.categoryId', 'categoryId')
-      .addSelect('COALESCE(category.name, \'Uncategorized\')', 'categoryName')
+      .addSelect("COALESCE(category.name, 'Uncategorized')", 'categoryName')
       .addSelect('category.icon', 'categoryIcon')
       .addSelect('COALESCE(SUM(expense.amount), 0)', 'total')
       .where('expense.userId = :userId', { userId })
@@ -178,8 +175,7 @@ export class ReportsService {
         categoryName: row.categoryName,
         categoryIcon: row.categoryIcon,
         totalSpent: spent,
-        percentageOfTotal:
-          Math.round((spent / totalSpent) * 10000) / 100,
+        percentageOfTotal: Math.round((spent / totalSpent) * 10000) / 100,
         budgetLimit,
         budgetUtilization,
       };
@@ -201,11 +197,7 @@ export class ReportsService {
     }
 
     // Query spending data for the entire range
-    const startDate = new Date(
-      monthList[0].year,
-      monthList[0].month - 1,
-      1,
-    );
+    const startDate = new Date(monthList[0].year, monthList[0].month - 1, 1);
     const endDate = new Date(
       monthList[monthList.length - 1].year,
       monthList[monthList.length - 1].month,
@@ -264,9 +256,8 @@ export class ReportsService {
 
         if (previousSpent > 0) {
           result.changePercentage =
-            Math.round(
-              ((totalSpent - previousSpent) / previousSpent) * 10000,
-            ) / 100;
+            Math.round(((totalSpent - previousSpent) / previousSpent) * 10000) /
+            100;
         }
       }
 
@@ -315,7 +306,14 @@ export class ReportsService {
       .orderBy('expense.date', 'ASC')
       .getRawMany();
 
-    const headers = ['Date', 'Category', 'Vendor', 'Amount', 'Currency', 'Status'];
+    const headers = [
+      'Date',
+      'Category',
+      'Vendor',
+      'Amount',
+      'Currency',
+      'Status',
+    ];
 
     const rows = expenses.map((e) => [
       e.date,

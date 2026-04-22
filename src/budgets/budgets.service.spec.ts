@@ -113,8 +113,8 @@ describe('BudgetsService', () => {
       });
       expect(expenseRepo.createQueryBuilder).toHaveBeenCalledWith('expense');
       expect(result).toHaveLength(1);
-      expect(result[0].spent).toBe(200.50);
-      expect(result[0].remaining).toBe(299.50);
+      expect(result[0].spent).toBe(200.5);
+      expect(result[0].remaining).toBe(299.5);
       expect(result[0].percentage).toBe(40.1);
     });
 

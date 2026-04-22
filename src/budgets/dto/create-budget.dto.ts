@@ -9,7 +9,10 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateBudgetDto {
-  @ApiProperty({ description: 'Category UUID', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiProperty({
+    description: 'Category UUID',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
   @IsString()
   @IsNotEmpty()
   categoryId: string;
@@ -26,7 +29,7 @@ export class CreateBudgetDto {
   @Max(2100)
   year: number;
 
-  @ApiProperty({ description: 'Budget limit amount', example: 500.00 })
+  @ApiProperty({ description: 'Budget limit amount', example: 500.0 })
   @IsNumber()
   @Min(0.01)
   limit: number;

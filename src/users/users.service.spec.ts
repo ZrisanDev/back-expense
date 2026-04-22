@@ -65,7 +65,7 @@ describe('UsersService', () => {
       });
       (repo.save as jest.Mock).mockResolvedValue(mockUser);
 
-      const result = await service.create(dto as any);
+      const result = await service.create(dto);
 
       expect(repo.findOne).toHaveBeenCalledWith({ where: { email } });
       expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
@@ -104,12 +104,12 @@ describe('UsersService', () => {
     it('should throw NotFoundException when user not found', async () => {
       (repo.findOne as jest.Mock).mockResolvedValue(null);
 
-      await expect(service.findByEmail('nonexistent@example.com')).rejects.toThrow(
-        NotFoundException,
-      );
-      await expect(service.findByEmail('nonexistent@example.com')).rejects.toThrow(
-        'User not found',
-      );
+      await expect(
+        service.findByEmail('nonexistent@example.com'),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.findByEmail('nonexistent@example.com'),
+      ).rejects.toThrow('User not found');
     });
   });
 

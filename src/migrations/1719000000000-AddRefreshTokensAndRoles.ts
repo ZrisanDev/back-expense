@@ -32,8 +32,6 @@ export class AddRefreshTokensAndRoles1719000000000 implements MigrationInterface
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "refresh_tokens"`);
-    await queryRunner.query(
-      `ALTER TABLE "user" DROP COLUMN IF EXISTS "role"`,
-    );
+    await queryRunner.query(`ALTER TABLE "user" DROP COLUMN IF EXISTS "role"`);
   }
 }

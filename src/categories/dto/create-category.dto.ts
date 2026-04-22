@@ -8,7 +8,11 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCategoryDto {
-  @ApiProperty({ description: 'Category name', example: 'Food & Dining', maxLength: 100 })
+  @ApiProperty({
+    description: 'Category name',
+    example: 'Food & Dining',
+    maxLength: 100,
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
@@ -19,7 +23,10 @@ export class CreateCategoryDto {
   @IsOptional()
   icon?: string;
 
-  @ApiPropertyOptional({ description: 'Set as default category', example: false })
+  @ApiPropertyOptional({
+    description: 'Set as default category',
+    example: false,
+  })
   @IsBoolean()
   @IsOptional()
   isDefault?: boolean;

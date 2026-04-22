@@ -71,8 +71,15 @@ describe('ReportsService', () => {
     jest.clearAllMocks();
     // Re-establish chainable mock for all chain methods
     const chainMethods = [
-      'select', 'addSelect', 'leftJoin', 'where', 'andWhere',
-      'groupBy', 'addGroupBy', 'orderBy', 'limit',
+      'select',
+      'addSelect',
+      'leftJoin',
+      'where',
+      'andWhere',
+      'groupBy',
+      'addGroupBy',
+      'orderBy',
+      'limit',
     ];
     chainMethods.forEach((key) => {
       mockQueryBuilder[key].mockReturnValue(mockQueryBuilder);
@@ -91,7 +98,10 @@ describe('ReportsService', () => {
 
     it('should return zeros when no expenses exist', async () => {
       // totalSpent + transactionCount query
-      mockQueryBuilder.getRawOne.mockResolvedValueOnce({ total: '0', count: '0' });
+      mockQueryBuilder.getRawOne.mockResolvedValueOnce({
+        total: '0',
+        count: '0',
+      });
       // category breakdown query
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
       // top vendors query
@@ -147,19 +157,22 @@ describe('ReportsService', () => {
 
       const result = await service.getSummary(userId, query);
 
-      expect(result.totalSpent).toBe(1500.50);
+      expect(result.totalSpent).toBe(1500.5);
       expect(result.transactionCount).toBe(25);
       expect(result.categoryBreakdown).toHaveLength(2);
       expect(result.categoryBreakdown[0].percentage).toBeCloseTo(53.35);
       expect(result.topVendors).toHaveLength(2);
       expect(result.topVendors[0].vendor).toBe('Amazon');
       expect(result.budgetComparison).toHaveLength(1);
-      expect(result.budgetComparison[0].spent).toBe(800.50);
-      expect(result.budgetComparison[0].remaining).toBe(199.50);
+      expect(result.budgetComparison[0].spent).toBe(800.5);
+      expect(result.budgetComparison[0].remaining).toBe(199.5);
     });
 
     it('should use provided month/year when specified', async () => {
-      mockQueryBuilder.getRawOne.mockResolvedValueOnce({ total: '0', count: '0' });
+      mockQueryBuilder.getRawOne.mockResolvedValueOnce({
+        total: '0',
+        count: '0',
+      });
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
 
@@ -184,7 +197,10 @@ describe('ReportsService', () => {
     });
 
     it('should handle budgets with no matching expenses', async () => {
-      mockQueryBuilder.getRawOne.mockResolvedValueOnce({ total: '0', count: '0' });
+      mockQueryBuilder.getRawOne.mockResolvedValueOnce({
+        total: '0',
+        count: '0',
+      });
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
 
@@ -209,7 +225,10 @@ describe('ReportsService', () => {
     });
 
     it('should handle null category in expenses for category breakdown', async () => {
-      mockQueryBuilder.getRawOne.mockResolvedValueOnce({ total: '100', count: '1' });
+      mockQueryBuilder.getRawOne.mockResolvedValueOnce({
+        total: '100',
+        count: '1',
+      });
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([
         {
           categoryId: null,
@@ -282,9 +301,24 @@ describe('ReportsService', () => {
 
     it('should order results by totalSpent DESC', async () => {
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { categoryId: 'cat-2', categoryName: 'B', categoryIcon: null, total: '500' },
-        { categoryId: 'cat-1', categoryName: 'A', categoryIcon: null, total: '100' },
-        { categoryId: 'cat-3', categoryName: 'C', categoryIcon: null, total: '50' },
+        {
+          categoryId: 'cat-2',
+          categoryName: 'B',
+          categoryIcon: null,
+          total: '500',
+        },
+        {
+          categoryId: 'cat-1',
+          categoryName: 'A',
+          categoryIcon: null,
+          total: '100',
+        },
+        {
+          categoryId: 'cat-3',
+          categoryName: 'C',
+          categoryIcon: null,
+          total: '50',
+        },
       ]);
       (budgetRepo.find as jest.Mock).mockResolvedValue([]);
 
@@ -297,8 +331,18 @@ describe('ReportsService', () => {
 
     it('should calculate percentages correctly', async () => {
       mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { categoryId: 'cat-1', categoryName: 'A', categoryIcon: null, total: '333.33' },
-        { categoryId: 'cat-2', categoryName: 'B', categoryIcon: null, total: '666.67' },
+        {
+          categoryId: 'cat-1',
+          categoryName: 'A',
+          categoryIcon: null,
+          total: '333.33',
+        },
+        {
+          categoryId: 'cat-2',
+          categoryName: 'B',
+          categoryIcon: null,
+          total: '666.67',
+        },
       ]);
       (budgetRepo.find as jest.Mock).mockResolvedValue([]);
 

@@ -9,17 +9,24 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ExpenseStatus } from '../entities/expense.entity';
 
 export class CreateExpenseDto {
-  @ApiProperty({ description: 'Expense amount', example: 45.50 })
+  @ApiProperty({ description: 'Expense amount', example: 45.5 })
   @IsNumber()
   @IsNotEmpty()
   amount: number;
 
-  @ApiPropertyOptional({ description: 'ISO currency code', example: 'USD', default: 'USD' })
+  @ApiPropertyOptional({
+    description: 'ISO currency code',
+    example: 'USD',
+    default: 'USD',
+  })
   @IsString()
   @IsOptional()
   currency: string;
 
-  @ApiPropertyOptional({ description: 'Category UUID', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiPropertyOptional({
+    description: 'Category UUID',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
   @IsString()
   @IsOptional()
   categoryId: string;
@@ -29,12 +36,19 @@ export class CreateExpenseDto {
   @IsOptional()
   vendor: string;
 
-  @ApiProperty({ description: 'Expense date (ISO string)', example: '2026-04-21' })
+  @ApiProperty({
+    description: 'Expense date (ISO string)',
+    example: '2026-04-21',
+  })
   @IsString()
   @IsNotEmpty()
   date: string;
 
-  @ApiPropertyOptional({ description: 'Expense status', enum: ExpenseStatus, default: ExpenseStatus.UPLOADED })
+  @ApiPropertyOptional({
+    description: 'Expense status',
+    enum: ExpenseStatus,
+    default: ExpenseStatus.UPLOADED,
+  })
   @IsEnum(ExpenseStatus)
   @IsOptional()
   status: ExpenseStatus;

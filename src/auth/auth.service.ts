@@ -37,9 +37,7 @@ export class AuthService {
 
     const expiresAt = new Date();
     if (refreshTokenExpiresIn.endsWith('d')) {
-      expiresAt.setDate(
-        expiresAt.getDate() + parseInt(refreshTokenExpiresIn),
-      );
+      expiresAt.setDate(expiresAt.getDate() + parseInt(refreshTokenExpiresIn));
     } else if (refreshTokenExpiresIn.endsWith('h')) {
       expiresAt.setHours(
         expiresAt.getHours() + parseInt(refreshTokenExpiresIn),
@@ -85,8 +83,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const { accessToken, refreshToken, expiresAt } =
-      this.generateTokens(user);
+    const { accessToken, refreshToken, expiresAt } = this.generateTokens(user);
 
     await this.saveRefreshToken(user.id, refreshToken, expiresAt);
 
@@ -115,8 +112,7 @@ export class AuthService {
     await this.refreshTokenRepository.save(token);
 
     const user = token.user;
-    const { accessToken, refreshToken, expiresAt } =
-      this.generateTokens(user);
+    const { accessToken, refreshToken, expiresAt } = this.generateTokens(user);
 
     await this.saveRefreshToken(user.id, refreshToken, expiresAt);
 
