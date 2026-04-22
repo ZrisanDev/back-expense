@@ -18,17 +18,17 @@ export class Category {
   name: string;
 
   @Column({ nullable: true })
-  icon: string;
+  icon: string | null;
 
   @Column({ default: false })
   isDefault: boolean;
 
   @Column({ name: 'user_id', nullable: true })
-  userId: string;
+  userId: string | null;
 
   @ManyToOne(() => User, (user) => user.categories, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user: User | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
