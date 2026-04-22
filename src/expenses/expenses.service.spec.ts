@@ -1,13 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ExpensesService } from './expenses.service';
 import { Expense, ExpenseStatus } from './entities/expense.entity';
+import { FilesService } from '../files/files.service';
 
 describe('ExpensesService', () => {
   let service: ExpensesService;
   let repo: jest.Mocked<Repository<Expense>>;
+  let filesService: jest.Mocked<FilesService>;
 
   const userId = 'user-123';
   const expenseId = 'exp-456';
@@ -50,11 +52,18 @@ describe('ExpensesService', () => {
             createQueryBuilder: jest.fn(() => mockQueryBuilder),
           },
         },
+        {
+          provide: FilesService,
+          useValue: {
+            deleteFilesForExpense: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<ExpensesService>(ExpensesService);
     repo = module.get(getRepositoryToken(Expense));
+    filesService = module.get(FilesService);
   });
 
   afterEach(() => {
@@ -293,6 +302,50 @@ describe('ExpensesService', () => {
       await expect(service.remove('nonexistent-id', userId)).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('should call deleteFilesForExpense before repo.remove when cascading', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(mockExpense as Expense);
+      (filesService.deleteFilesForExpense as jest.Mock).mockResolvedValue(undefined);
+      (repo.remove as jest.Mock).mockResolvedValue(mockExpense);
+
+      await service.remove(expenseId, userId);
+
+      expect(filesService.deleteFilesForExpense).toHaveBeenCalledWith(expenseId);
+      expect(repo.remove).toHaveBeenCalledWith(mockExpense);
+
+      // Verify call order: deleteFilesForExpense was called before remove
+      const deleteFilesCalls = (filesService.deleteFilesForExpense as jest.Mock).mock.invocationCallOrder;
+      const removeCalls = (repo.remove as jest.Mock).mock.invocationCallOrder;
+      expect(deleteFilesCalls[0]).toBeLessThan(removeCalls[0]);
+    });
+
+    it('should still remove expense when S3 cascade fails for some files', async () => {
+      const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+      jest.spyOn(service, 'findOne').mockResolvedValue(mockExpense as Expense);
+      (filesService.deleteFilesForExpense as jest.Mock).mockRejectedValue(
+        new Error('S3 is down'),
+      );
+      (repo.remove as jest.Mock).mockResolvedValue(mockExpense);
+
+      const result = await service.remove(expenseId, userId);
+
+      expect(filesService.deleteFilesForExpense).toHaveBeenCalledWith(expenseId);
+      expect(repo.remove).toHaveBeenCalledWith(mockExpense);
+      expect(result).toEqual({ deleted: true });
+      loggerSpy.mockRestore();
+    });
+
+    it('should remove expense normally when it has no files', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(mockExpense as Expense);
+      (filesService.deleteFilesForExpense as jest.Mock).mockResolvedValue(undefined);
+      (repo.remove as jest.Mock).mockResolvedValue(mockExpense);
+
+      const result = await service.remove(expenseId, userId);
+
+      expect(filesService.deleteFilesForExpense).toHaveBeenCalledWith(expenseId);
+      expect(repo.remove).toHaveBeenCalledWith(mockExpense);
+      expect(result).toEqual({ deleted: true });
     });
   });
 });

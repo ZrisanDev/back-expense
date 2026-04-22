@@ -12,15 +12,19 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
+import { FilesModule } from './files/files.module';
 
 import configuration from './config/configuration';
 import databaseConfig from './config/database.config';
+import { validationSchema } from './config/validation.schema';
+import { AwsModule } from './aws/aws.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       load: [configuration, databaseConfig],
       isGlobal: true,
+      validationSchema,
     }),
     ThrottlerModule.forRoot([
       {
@@ -35,6 +39,8 @@ import databaseConfig from './config/database.config';
     CategoriesModule,
     BudgetsModule,
     ReportsModule,
+    AwsModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [

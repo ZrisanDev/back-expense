@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,12 +11,16 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 import { Expense, ExpenseStatus } from './entities/expense.entity';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class ExpensesService {
+  private readonly logger = new Logger(ExpensesService.name);
+
   constructor(
     @InjectRepository(Expense)
     private readonly expenseRepository: Repository<Expense>,
+    private readonly filesService: FilesService,
   ) {}
 
   async create(userId: string, createExpenseDto: CreateExpenseDto) {
@@ -134,6 +139,15 @@ export class ExpensesService {
 
   async remove(id: string, userId: string) {
     const expense = await this.findOne(id, userId);
+
+    try {
+      await this.filesService.deleteFilesForExpense(expense.id);
+    } catch (error) {
+      this.logger.error(
+        `Failed to cascade delete files for expense ${expense.id}: ${(error as Error).message}`,
+      );
+    }
+
     await this.expenseRepository.remove(expense);
     return { deleted: true };
   }

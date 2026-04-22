@@ -6,9 +6,11 @@ import {
   Entity,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Category } from '../../categories/entities/category.entity';
+import { File } from '../../files/entities/file.entity';
 
 export enum ExpenseStatus {
   UPLOADED = 'UPLOADED',
@@ -67,4 +69,7 @@ export class Expense {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @OneToMany(() => File, (file) => file.expense)
+  files: File[];
 }
