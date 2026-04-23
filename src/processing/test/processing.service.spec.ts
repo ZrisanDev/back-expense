@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ProcessingService } from '../processing.service';
 import { ProcessingResult } from '../entities/processing-result.entity';
 import { ExpenseStatusHistory } from '../entities/expense-status-history.entity';
@@ -21,6 +22,7 @@ describe('ProcessingService', () => {
   let service: ProcessingService;
   let dataSource: { createQueryRunner: jest.Mock };
   let configService: { get: jest.Mock };
+  let eventEmitter: { emit: jest.Mock };
   let queryRunner: {
     startTransaction: jest.Mock;
     commitTransaction: jest.Mock;
@@ -79,11 +81,16 @@ describe('ProcessingService', () => {
       }),
     };
 
+    eventEmitter = {
+      emit: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProcessingService,
         { provide: DataSource, useValue: dataSource },
         { provide: ConfigService, useValue: configService },
+        { provide: EventEmitter2, useValue: eventEmitter },
         {
           provide: getRepositoryToken(ProcessingResult),
           useValue: {},
@@ -334,6 +341,41 @@ describe('ProcessingService', () => {
       });
 
       await service.processResult(dto);
+    });
+
+    // Task 5.1: Event emission after commit
+    it('should emit expense.status.changed event after commit', async () => {
+      const dto: ProcessingResultRequestDto = {
+        ...baseDto,
+        status: ExpenseStatus.PROCESSED,
+        confidence: 0.95,
+      };
+
+      const expense = { ...mockProcessingExpense };
+      queryRunner.manager.findOne.mockResolvedValueOnce(expense);
+      queryRunner.manager.save.mockImplementation(async (entity: any) => {
+        return { id: 'pr-event', ...entity };
+      });
+
+      await service.processResult(dto);
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'expense.status.changed',
+        expect.objectContaining({
+          expenseId,
+          status: ExpenseStatus.PROCESSED,
+          userId: 'user-1',
+          previousStatus: ExpenseStatus.PROCESSING,
+        }),
+      );
+    });
+
+    it('should NOT emit event when transaction rolls back', async () => {
+      queryRunner.manager.findOne.mockResolvedValueOnce(null);
+
+      await expect(service.processResult(baseDto)).rejects.toThrow(NotFoundException);
+
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 });

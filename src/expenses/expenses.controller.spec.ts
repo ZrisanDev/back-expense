@@ -32,6 +32,8 @@ describe('ExpensesController', () => {
       update: jest.fn(),
       approve: jest.fn(),
       remove: jest.fn(),
+      reprocess: jest.fn(),
+      getStatusStream: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -150,6 +152,30 @@ describe('ExpensesController', () => {
       await expect(controller.remove(userId, 'nonexistent-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('reprocess', () => {
+    it('should call service.reprocess with id and userId', async () => {
+      const reprocessed = { ...mockExpense, status: 'PROCESSING' };
+      service.reprocess.mockResolvedValue(reprocessed as any);
+
+      const result = await controller.reprocess(userId, expenseId);
+
+      expect(service.reprocess).toHaveBeenCalledWith(expenseId, userId);
+      expect(result).toEqual(reprocessed);
+    });
+  });
+
+  describe('statusStream', () => {
+    it('should call service.getStatusStream with id and userId', () => {
+      const mockObservable = { subscribe: jest.fn() };
+      service.getStatusStream.mockReturnValue(mockObservable as any);
+
+      const result = controller.statusStream(userId, expenseId);
+
+      expect(service.getStatusStream).toHaveBeenCalledWith(expenseId, userId);
+      expect(result).toBe(mockObservable);
     });
   });
 });

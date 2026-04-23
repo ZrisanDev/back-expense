@@ -72,6 +72,12 @@ export class Expense {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @Column({ name: 'processing_started_at', type: 'timestamptz', nullable: true })
+  processingStartedAt: Date | null;
+
+  @Column({ name: 'retry_count', default: 0 })
+  retryCount: number;
+
   @OneToMany(() => File, (file) => file.expense)
   files: File[];
 

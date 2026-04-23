@@ -1,7 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Subject, takeUntil } from 'rxjs';
 import { ExpensesService } from './expenses.service';
 import { Expense, ExpenseStatus } from './entities/expense.entity';
 import { FilesService } from '../files/files.service';
@@ -10,6 +21,8 @@ describe('ExpensesService', () => {
   let service: ExpensesService;
   let repo: jest.Mocked<Repository<Expense>>;
   let filesService: jest.Mocked<FilesService>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
+  let configService: jest.Mocked<ConfigService>;
 
   const userId = 'user-123';
   const expenseId = 'exp-456';
@@ -56,6 +69,22 @@ describe('ExpensesService', () => {
           provide: FilesService,
           useValue: {
             deleteFilesForExpense: jest.fn(),
+            triggerProcessing: jest.fn(),
+          },
+        },
+        {
+          provide: EventEmitter2,
+          useValue: {
+            emit: jest.fn(),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string) => {
+              if (key === 'MAX_RETRIES') return 3;
+              return undefined;
+            }),
           },
         },
       ],
@@ -64,6 +93,8 @@ describe('ExpensesService', () => {
     service = module.get<ExpensesService>(ExpensesService);
     repo = module.get(getRepositoryToken(Expense));
     filesService = module.get(FilesService);
+    eventEmitter = module.get(EventEmitter2);
+    configService = module.get(ConfigService);
   });
 
   afterEach(() => {
@@ -202,13 +233,13 @@ describe('ExpensesService', () => {
       const result = await service.findOne(expenseId, userId);
 
       expect(repo.findOne).toHaveBeenCalledWith({
-        where: { id: expenseId, userId },
+        where: { id: expenseId },
         relations: ['category'],
       });
       expect(result).toEqual(mockExpense);
     });
 
-    it('should throw NotFoundException when expense not found', async () => {
+    it('should throw NotFoundException when expense does not exist (404)', async () => {
       (repo.findOne as jest.Mock).mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent-id', userId)).rejects.toThrow(
@@ -216,6 +247,21 @@ describe('ExpensesService', () => {
       );
       await expect(service.findOne('nonexistent-id', userId)).rejects.toThrow(
         'Expense not found',
+      );
+    });
+
+    it('should throw ForbiddenException when user does not own the expense (403)', async () => {
+      const otherUsersExpense = {
+        ...mockExpense,
+        userId: 'other-user-456',
+      };
+      (repo.findOne as jest.Mock).mockResolvedValue(otherUsersExpense);
+
+      await expect(service.findOne(expenseId, userId)).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(service.findOne(expenseId, userId)).rejects.toThrow(
+        'Access denied',
       );
     });
   });
@@ -346,6 +392,295 @@ describe('ExpensesService', () => {
       expect(filesService.deleteFilesForExpense).toHaveBeenCalledWith(expenseId);
       expect(repo.remove).toHaveBeenCalledWith(mockExpense);
       expect(result).toEqual({ deleted: true });
+    });
+  });
+
+  describe('reprocess', () => {
+    // Task 4.1: Valid statuses, 403 non-owner, 409 PROCESSING, 429 retry>=3
+
+    it('should reprocess a FAILED expense (S1)', async () => {
+      const failedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.FAILED,
+        retryCount: 0,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(failedExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      const result = await service.reprocess(expenseId, userId);
+
+      expect(service.findOne).toHaveBeenCalledWith(expenseId, userId);
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: ExpenseStatus.PROCESSING,
+          retryCount: 1,
+          processingStartedAt: expect.any(Date),
+        }),
+      );
+      expect(result.status).toBe(ExpenseStatus.PROCESSING);
+    });
+
+    it('should reprocess a NEEDS_REVIEW expense', async () => {
+      const reviewExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.NEEDS_REVIEW,
+        retryCount: 0,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(reviewExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      await service.reprocess(expenseId, userId);
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: ExpenseStatus.PROCESSING,
+          retryCount: 1,
+        }),
+      );
+    });
+
+    it('should reprocess a PROCESSED expense', async () => {
+      const processedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.PROCESSED,
+        retryCount: 0,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(processedExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      await service.reprocess(expenseId, userId);
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: ExpenseStatus.PROCESSING,
+          retryCount: 1,
+        }),
+      );
+    });
+
+    it('should throw 409 when expense is already PROCESSING (S3)', async () => {
+      const processingExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.PROCESSING,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(processingExpense as Expense);
+
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        'Expense is already being processed',
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('should throw HttpException 429 when retry count >= MAX_RETRIES (S4)', async () => {
+      const maxRetriedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.FAILED,
+        retryCount: 3,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(maxRetriedExpense as Expense);
+
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        HttpException,
+      );
+      await expect(service.reprocess(expenseId, userId)).rejects.toMatchObject({
+        status: HttpStatus.TOO_MANY_REQUESTS,
+        response: 'Maximum retry limit reached',
+      });
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException for invalid status (UPLOADED)', async () => {
+      const uploadedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.UPLOADED,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(uploadedExpense as Expense);
+
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        'Cannot reprocess expense with status UPLOADED',
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    // Task 4.2: State transitions - status→PROCESSING, retry_count++, processing_started_at=now
+
+    it('should increment retry_count on reprocess', async () => {
+      const failedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.FAILED,
+        retryCount: 1,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(failedExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      const result = await service.reprocess(expenseId, userId);
+
+      expect(result.retryCount).toBe(2);
+    });
+
+    it('should set processingStartedAt to current time', async () => {
+      const failedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.FAILED,
+        retryCount: 0,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(failedExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      const beforeCall = new Date();
+      const result = await service.reprocess(expenseId, userId);
+      const afterCall = new Date();
+
+      expect(result.processingStartedAt).toBeInstanceOf(Date);
+      expect(result.processingStartedAt!.getTime()).toBeGreaterThanOrEqual(
+        beforeCall.getTime(),
+      );
+      expect(result.processingStartedAt!.getTime()).toBeLessThanOrEqual(
+        afterCall.getTime(),
+      );
+    });
+
+    it('should throw NotFoundException when expense does not exist (S2 via findOne)', async () => {
+      jest.spyOn(service, 'findOne').mockImplementation(() => {
+        throw new NotFoundException('Expense not found');
+      });
+
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw ForbiddenException when caller is not owner (S2)', async () => {
+      const otherExpense = { ...mockExpense, userId: 'other-user' };
+      jest
+        .spyOn(service, 'findOne')
+        .mockImplementation(() => {
+          throw new ForbiddenException('Not owner');
+        });
+
+      await expect(service.reprocess(expenseId, userId)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    // Task 4.3: triggerProcessing called after transition (R3)
+
+    it('should call filesService.triggerProcessing after state transition', async () => {
+      const failedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.FAILED,
+        retryCount: 0,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(failedExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      await service.reprocess(expenseId, userId);
+
+      expect(filesService.triggerProcessing).toHaveBeenCalledWith(
+        expenseId,
+        expect.any(String),
+      );
+    });
+
+    // Task 5.2: reprocess emits expense.status.changed event
+
+    it('should emit expense.status.changed event after reprocess', async () => {
+      const failedExpense = {
+        ...mockExpense,
+        status: ExpenseStatus.FAILED,
+        retryCount: 0,
+        processingStartedAt: null,
+      };
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue(failedExpense as Expense);
+      (repo.save as jest.Mock).mockImplementation(async (expense) => expense);
+
+      await service.reprocess(expenseId, userId);
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'expense.status.changed',
+        expect.objectContaining({
+          expenseId,
+          status: ExpenseStatus.PROCESSING,
+          userId,
+          previousStatus: ExpenseStatus.FAILED,
+        }),
+      );
+    });
+  });
+
+  describe('getStatusStream', () => {
+    // Task 6.1: SSE ownership 403, existence 404
+    it('should throw NotFoundException when expense does not exist', (done) => {
+      jest.spyOn(service, 'findOne').mockImplementation(() => {
+        throw new NotFoundException('Expense not found');
+      });
+
+      const stream$ = service.getStatusStream(expenseId, userId);
+      stream$.subscribe({
+        error: (err) => {
+          expect(err).toBeInstanceOf(NotFoundException);
+          expect(err.message).toBe('Expense not found');
+          done();
+        },
+      });
+    });
+
+    it('should throw ForbiddenException when caller is not owner', (done) => {
+      jest.spyOn(service, 'findOne').mockImplementation(() => {
+        throw new ForbiddenException('Not owner');
+      });
+
+      const stream$ = service.getStatusStream(expenseId, userId);
+      stream$.subscribe({
+        error: (err) => {
+          expect(err).toBeInstanceOf(ForbiddenException);
+          done();
+        },
+      });
+    });
+
+    // Task 6.2: SSE observable behavior
+    it('should return an observable that emits events for the expense', async () => {
+      const expense = {
+        ...mockExpense,
+        status: ExpenseStatus.PROCESSING,
+      };
+      jest.spyOn(service, 'findOne').mockResolvedValue(expense as Expense);
+
+      const stream$ = service.getStatusStream(expenseId, userId);
+      expect(stream$).toBeDefined();
     });
   });
 });

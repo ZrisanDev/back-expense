@@ -2,26 +2,49 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Observable, map, takeUntil, filter, Subject, timer } from 'rxjs';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 import { Expense, ExpenseStatus } from './entities/expense.entity';
 import { FilesService } from '../files/files.service';
 
+const REPROCESSABLE_STATUSES: ExpenseStatus[] = [
+  ExpenseStatus.FAILED,
+  ExpenseStatus.NEEDS_REVIEW,
+  ExpenseStatus.PROCESSED,
+];
+
+const TERMINAL_STATUSES: ExpenseStatus[] = [
+  ExpenseStatus.PROCESSED,
+  ExpenseStatus.APPROVED,
+  ExpenseStatus.FAILED,
+];
+
 @Injectable()
 export class ExpensesService {
   private readonly logger = new Logger(ExpensesService.name);
+  private readonly maxRetries: number;
 
   constructor(
     @InjectRepository(Expense)
     private readonly expenseRepository: Repository<Expense>,
     private readonly filesService: FilesService,
-  ) {}
+    private readonly eventEmitter: EventEmitter2,
+    private readonly configService: ConfigService,
+  ) {
+    this.maxRetries = this.configService.get<number>('MAX_RETRIES') ?? 3;
+  }
 
   async create(userId: string, createExpenseDto: CreateExpenseDto) {
     const duplicate = await this.findDuplicate(userId, createExpenseDto);
@@ -97,12 +120,16 @@ export class ExpensesService {
 
   async findOne(id: string, userId: string) {
     const expense = await this.expenseRepository.findOne({
-      where: { id, userId },
+      where: { id },
       relations: ['category'],
     });
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
+    }
+
+    if (expense.userId !== userId) {
+      throw new ForbiddenException('Access denied');
     }
 
     return expense;
@@ -135,6 +162,88 @@ export class ExpensesService {
 
     expense.status = ExpenseStatus.APPROVED;
     return this.expenseRepository.save(expense);
+  }
+
+  async reprocess(id: string, userId: string): Promise<Expense> {
+    const expense = await this.findOne(id, userId);
+    const previousStatus = expense.status;
+
+    if (expense.status === ExpenseStatus.PROCESSING) {
+      throw new ConflictException('Expense is already being processed');
+    }
+
+    if (!REPROCESSABLE_STATUSES.includes(expense.status)) {
+      throw new BadRequestException(
+        `Cannot reprocess expense with status ${expense.status}`,
+      );
+    }
+
+    if (expense.retryCount >= this.maxRetries) {
+      throw new HttpException(
+        'Maximum retry limit reached',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    expense.status = ExpenseStatus.PROCESSING;
+    expense.retryCount += 1;
+    expense.processingStartedAt = new Date();
+
+    const saved = await this.expenseRepository.save(expense);
+
+    this.eventEmitter.emit('expense.status.changed', {
+      expenseId: id,
+      status: ExpenseStatus.PROCESSING,
+      userId,
+      previousStatus,
+    });
+
+    // Get the first file's s3Key for processing trigger
+    await this.filesService.triggerProcessing(id, '');
+
+    return saved;
+  }
+
+  getStatusStream(expenseId: string, userId: string): Observable<MessageEvent> {
+    return new Observable<MessageEvent>((subscriber) => {
+      this.findOne(expenseId, userId)
+        .then(() => {
+          const kill$ = new Subject<void>();
+          const idleTimeout$ = timer(5 * 60 * 1000); // 5-minute idle timeout
+
+          idleTimeout$.subscribe(() => {
+            kill$.next();
+            kill$.complete();
+            subscriber.complete();
+          });
+
+          this.eventEmitter
+            .on('expense.status.changed' as string)
+            .pipe(
+              filter(
+                (event: { expenseId: string; status: ExpenseStatus }) =>
+                  event.expenseId === expenseId,
+              ),
+              takeUntil(kill$),
+            )
+            .subscribe((event: { expenseId: string; status: ExpenseStatus; userId: string; previousStatus?: ExpenseStatus }) => {
+              const messageEvent = new MessageEvent('status', {
+                data: JSON.stringify(event),
+              });
+              subscriber.next(messageEvent);
+
+              if (TERMINAL_STATUSES.includes(event.status)) {
+                kill$.next();
+                kill$.complete();
+                idleTimeout$.unsubscribe();
+                subscriber.complete();
+              }
+            });
+        })
+        .catch((error) => {
+          subscriber.error(error);
+        });
+    });
   }
 
   async remove(id: string, userId: string) {

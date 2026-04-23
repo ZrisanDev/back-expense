@@ -61,6 +61,12 @@ export const validationSchema = Joi.object({
 
   CONFIDENCE_THRESHOLD: Joi.number().min(0).max(1).default(0.7),
 
+  STUCK_TIMEOUT_MINUTES: Joi.number().integer().min(1).default(10),
+
+  MAX_RETRIES: Joi.number().integer().min(1).default(3),
+
+  ORPHAN_HOURS: Joi.number().integer().min(1).default(1),
+
   PROCESSING_SERVICE_URL: Joi.string()
     .uri()
     .when('NODE_ENV', {

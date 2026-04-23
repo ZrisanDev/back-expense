@@ -8,6 +8,9 @@ import {
   Delete,
   Query,
   UseGuards,
+  HttpCode,
+  HttpStatus,
+  Sse,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,6 +18,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { Observable } from 'rxjs';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
@@ -81,5 +85,22 @@ export class ExpensesController {
   @ApiResponse({ status: 404, description: 'Expense not found' })
   remove(@GetUser('id') userId: string, @Param('id') id: string) {
     return this.expensesService.remove(id, userId);
+  }
+
+  @Post(':id/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reprocess an expense' })
+  @ApiResponse({ status: 200, description: 'Expense reprocessing started', type: Expense })
+  @ApiResponse({ status: 404, description: 'Expense not found' })
+  @ApiResponse({ status: 409, description: 'Expense already processing' })
+  @ApiResponse({ status: 429, description: 'Retry limit reached' })
+  reprocess(@GetUser('id') userId: string, @Param('id') id: string) {
+    return this.expensesService.reprocess(id, userId);
+  }
+
+  @Sse(':id/status-stream')
+  @ApiOperation({ summary: 'Stream expense status changes via SSE' })
+  statusStream(@GetUser('id') userId: string, @Param('id') id: string): Observable<MessageEvent> {
+    return this.expensesService.getStatusStream(id, userId);
   }
 }

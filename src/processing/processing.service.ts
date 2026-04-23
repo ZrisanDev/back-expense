@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository, DataSource } from 'typeorm';
 import { ProcessingResult } from './entities/processing-result.entity';
 import { ExpenseStatusHistory } from './entities/expense-status-history.entity';
@@ -20,6 +21,7 @@ export class ProcessingService {
     private expenseRepo: Repository<Expense>,
     private dataSource: DataSource,
     private configService: ConfigService,
+    private eventEmitter: EventEmitter2,
   ) {
     this.confidenceThreshold = parseFloat(
       this.configService.get<string>('CONFIDENCE_THRESHOLD') || '0.7',
@@ -90,6 +92,14 @@ export class ProcessingService {
 
       // 7. Commit
       await queryRunner.commitTransaction();
+
+      // 8. Emit event AFTER transaction commit to avoid pushing stale state
+      this.eventEmitter.emit('expense.status.changed', {
+        expenseId: dto.expenseId,
+        status: effectiveStatus,
+        userId: expense.userId,
+        previousStatus: ExpenseStatus.PROCESSING,
+      });
 
       return savedResult;
     } catch (error) {
